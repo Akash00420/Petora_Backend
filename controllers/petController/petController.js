@@ -1,6 +1,7 @@
 const Pet = require("../../models/petModel/petModel");
 const generatePetId = require("../../utils/generatePetId");
 const generateQRCode = require("../../utils/generateQRCode");
+const { recordScan } = require("../scanController/scanController");
 
 /**
  * @desc    Create a new pet profile (generates petId + QR code)

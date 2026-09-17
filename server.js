@@ -11,9 +11,9 @@ const errorHandler = require("./middlewares/errorMiddleware/errorMiddleware");
 // Routes
 const authRoutes = require("./routes/authRoutes/authRoutes");
 const petRoutes = require("./routes/petRoutes/petRoutes");
-// const userRoutes = require("./routes/userRoutes/userRoutes");
-// const lostRoutes = require("./routes/lostRoutes/lostRoutes");
-// const scanRoutes = require("./routes/scanRoutes/scanRoutes");
+const userRoutes = require("./routes/userRoutes/userRoutes");
+const lostRoutes = require("./routes/lostRoutes/lostRoutes");
+const scanRoutes = require("./routes/scanRoutes/scanRoutes");
 
 connectDB();
 
@@ -37,9 +37,9 @@ app.get("/api/health", (req, res) => {
 
 app.use("/api/auth", authRoutes);
 app.use("/api/pets", petRoutes);
-// app.use("/api/users", userRoutes);
-// app.use("/api/lost", lostRoutes);
-// app.use("/api/scan", scanRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/lost", lostRoutes);
+app.use("/api/scan", scanRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ success: false, message: "Route not found" });
