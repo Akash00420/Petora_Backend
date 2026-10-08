@@ -1,8 +1,9 @@
 const jwt = require("jsonwebtoken");
-const User = require("../../models/authModel/authModel");
+const User = require("../../models/AuthModel/AuthModel");
+const { SECRET_KEY } = require("../../utils/config");
 
 /**
- * Protect routes - verifies JWT from Authorization header or cookie,
+ * Protect routes - verifies JWT from the Authorization header,
  * attaches the authenticated user to req.user.
  */
 const protect = async (req, res, next) => {
@@ -13,8 +14,6 @@ const protect = async (req, res, next) => {
     req.headers.authorization.startsWith("Bearer")
   ) {
     token = req.headers.authorization.split(" ")[1];
-  } else if (req.cookies && req.cookies.token) {
-    token = req.cookies.token;
   }
 
   if (!token) {
@@ -25,7 +24,7 @@ const protect = async (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, SECRET_KEY);
 
     const user = await User.findById(decoded.id);
     if (!user) {

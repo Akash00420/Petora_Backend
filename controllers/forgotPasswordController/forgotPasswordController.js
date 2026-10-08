@@ -1,7 +1,8 @@
 const crypto = require("crypto");
-const User = require("../../models/authModel/authModel");
+const jwt = require("jsonwebtoken");
+const User = require("../../models/AuthModel/AuthModel");
 const sendEmail = require("../../utils/mailer");
-const { sendTokenResponse } = require("../../utils/generateToken");
+const { SECRET_KEY } = require("../../utils/config");
 
 /**
  * @desc    Request a password reset email
@@ -91,7 +92,22 @@ const resetPassword = async (req, res, next) => {
     user.resetPasswordExpire = undefined;
     await user.save();
 
-    sendTokenResponse(user, 200, res);
+    const token = jwt.sign(
+      { id: user._id, email: user.email, role: user.role },
+      SECRET_KEY,
+      { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
+    );
+
+    res.status(200).json({
+      success: true,
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
   } catch (error) {
     next(error);
   }

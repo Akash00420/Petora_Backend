@@ -1,5 +1,6 @@
-const User = require("../../models/authModel/authModel");
-const { sendTokenResponse } = require("../../utils/generateToken");
+const jwt = require("jsonwebtoken");
+const User = require("../../models/AuthModel/AuthModel");
+const { SECRET_KEY } = require("../../utils/config");
 
 /**
  * @desc    Log in an existing user
@@ -36,24 +37,38 @@ const login = async (req, res, next) => {
       });
     }
 
-    sendTokenResponse(user, 200, res);
+    const token = jwt.sign(
+      { id: user._id, email: user.email, role: user.role },
+      SECRET_KEY,
+      { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
+    );
+
+    res.status(200).json({
+      success: true,
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        avatar: user.avatar,
+        createdAt: user.createdAt,
+      },
+    });
   } catch (error) {
     next(error);
   }
 };
 
 /**
- * @desc    Log out current user (clear cookie)
+ * @desc    Log out current user. Stateless JWT - nothing to invalidate
+ *          server-side; the client just discards its stored token.
  * @route   POST /api/auth/logout
  * @access  Private
  */
 const logout = async (req, res, next) => {
   try {
-    res.cookie("token", "none", {
-      expires: new Date(Date.now() + 10 * 1000),
-      httpOnly: true,
-    });
-
     res.status(200).json({ success: true, message: "Logged out" });
   } catch (error) {
     next(error);
