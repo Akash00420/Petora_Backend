@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const ScanHistory = require("../../models/scanHistoryModel/scanHistoryModel");
 const Pet = require("../../models/petModel/petModel");
 
@@ -21,16 +22,20 @@ const recordScan = async (petObjectId, req) => {
 };
 
 /**
- * @desc    Get scan history for a pet (owner only)
+ * @desc    Get scan history for a pet (owner only).
+ *          :petId can be either the Mongo _id or the public PET-XXXXXX code.
  * @route   GET /api/scan/:petId
  * @access  Private (pet owner only)
  */
 const getScanHistory = async (req, res, next) => {
   try {
-    const pet = await Pet.findOne({
-      _id: req.params.petId,
-      owner: req.user.id,
-    });
+    const { petId } = req.params;
+
+    const filter = mongoose.isValidObjectId(petId)
+      ? { _id: petId, owner: req.user.id }
+      : { petId, owner: req.user.id };
+
+    const pet = await Pet.findOne(filter);
 
     if (!pet) {
       return res.status(404).json({

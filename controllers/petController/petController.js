@@ -1,7 +1,19 @@
+const mongoose = require("mongoose");
 const Pet = require("../../models/petModel/petModel");
 const generatePetId = require("../../utils/generatePetId");
 const generateQRCode = require("../../utils/generateQRCode");
 const { recordScan } = require("../scanController/scanController");
+
+/**
+ * Find a pet owned by the logged-in user, using either the Mongo _id
+ * or the public PET-XXXXXX code.
+ */
+const findOwnedPet = (idOrCode, userId) => {
+  const filter = mongoose.isValidObjectId(idOrCode)
+    ? { _id: idOrCode, owner: userId }
+    : { petId: idOrCode, owner: userId };
+  return Pet.findOne(filter);
+};
 
 /**
  * @desc    Create a new pet profile (generates petId + QR code)
@@ -77,13 +89,13 @@ const getMyPets = async (req, res, next) => {
 };
 
 /**
- * @desc    Get a single pet by Mongo _id (must belong to the logged-in user)
+ * @desc    Get a single pet (:id can be the Mongo _id or the PET- code)
  * @route   GET /api/pets/:id
  * @access  Private
  */
 const getPet = async (req, res, next) => {
   try {
-    const pet = await Pet.findOne({ _id: req.params.id, owner: req.user.id });
+    const pet = await findOwnedPet(req.params.id, req.user.id);
 
     if (!pet) {
       return res.status(404).json({
@@ -99,13 +111,13 @@ const getPet = async (req, res, next) => {
 };
 
 /**
- * @desc    Update a pet's profile
+ * @desc    Update a pet's profile (:id can be the Mongo _id or the PET- code)
  * @route   PUT /api/pets/:id
  * @access  Private
  */
 const updatePet = async (req, res, next) => {
   try {
-    let pet = await Pet.findOne({ _id: req.params.id, owner: req.user.id });
+    const pet = await findOwnedPet(req.params.id, req.user.id);
 
     if (!pet) {
       return res.status(404).json({
@@ -143,16 +155,13 @@ const updatePet = async (req, res, next) => {
 };
 
 /**
- * @desc    Delete a pet profile
+ * @desc    Delete a pet profile (:id can be the Mongo _id or the PET- code)
  * @route   DELETE /api/pets/:id
  * @access  Private
  */
 const deletePet = async (req, res, next) => {
   try {
-    const pet = await Pet.findOneAndDelete({
-      _id: req.params.id,
-      owner: req.user.id,
-    });
+    const pet = await findOwnedPet(req.params.id, req.user.id);
 
     if (!pet) {
       return res.status(404).json({
@@ -160,6 +169,8 @@ const deletePet = async (req, res, next) => {
         message: "Pet not found",
       });
     }
+
+    await pet.deleteOne();
 
     res.status(200).json({ success: true, message: "Pet deleted" });
   } catch (error) {
@@ -185,6 +196,8 @@ const getPublicPetProfile = async (req, res, next) => {
         message: "No pet found with this QR code",
       });
     }
+
+    await recordScan(pet._id, req);
 
     res.status(200).json({
       success: true,
