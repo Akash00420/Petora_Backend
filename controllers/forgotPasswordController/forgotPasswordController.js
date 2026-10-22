@@ -24,7 +24,7 @@ const forgotPassword = async (req, res, next) => {
     const resetToken = user.getResetPasswordToken();
     await user.save({ validateBeforeSave: false });
 
-    const resetUrl = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
+    const resetUrl = `${process.env.CLIENT_URL || "http://localhost:5173"}/reset-password/${resetToken}`;
 
     const message = `You requested a password reset. Click the link below to set a new password (valid for 30 minutes):\n\n${resetUrl}\n\nIf you did not request this, please ignore this email.`;
 
@@ -40,13 +40,21 @@ const forgotPassword = async (req, res, next) => {
         message: "If that email is registered, a reset link has been sent",
       });
     } catch (emailError) {
+      // Show the real reason in the server terminal (auth failure, missing SMTP vars, etc.)
+      console.error("Email send failed:", emailError.message);
+
       user.resetPasswordToken = undefined;
       user.resetPasswordExpire = undefined;
       await user.save({ validateBeforeSave: false });
 
+      // In development, show the real reason on the page to make setup easier
+      const isDev = (process.env.NODE_ENV || "development") === "development";
+
       return res.status(500).json({
         success: false,
-        message: "Email could not be sent, please try again later",
+        message: isDev
+          ? `Email could not be sent: ${emailError.message}`
+          : "Email could not be sent, please try again later",
       });
     }
   } catch (error) {

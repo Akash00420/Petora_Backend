@@ -1,7 +1,16 @@
 const nodemailer = require("nodemailer");
 
+// Same setup as the working QuickMeds mailer: Gmail via EMAIL_USER / EMAIL_PASS
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+
 /**
- * Send an email using SMTP credentials from environment variables.
+ * Send an email.
  * @param {Object} options
  * @param {string} options.to
  * @param {string} options.subject
@@ -9,18 +18,8 @@ const nodemailer = require("nodemailer");
  * @param {string} [options.html]
  */
 const sendEmail = async ({ to, subject, text, html }) => {
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT) || 587,
-    secure: Number(process.env.SMTP_PORT) === 465,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
-
   await transporter.sendMail({
-    from: process.env.MAIL_FROM,
+    from: `"Petora" <${process.env.EMAIL_USER}>`,
     to,
     subject,
     text,
