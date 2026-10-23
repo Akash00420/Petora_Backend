@@ -41,8 +41,16 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    resetPasswordToken: String,
-    resetPasswordExpire: Date,
+    // Password-reset OTP (stored hashed, never in plain text)
+    otp: {
+      type: String,
+      select: false,
+    },
+    otpExpire: Date,
+    otpAttempts: {
+      type: Number,
+      default: 0,
+    },
   },
   { timestamps: true }
 );
@@ -58,17 +66,16 @@ userSchema.methods.comparePassword = async function (enteredPassword) {
   return bcrypt.compare(enteredPassword, this.password);
 };
 
-userSchema.methods.getResetPasswordToken = function () {
-  const resetToken = crypto.randomBytes(32).toString("hex");
+// Create a 6-digit OTP, store only its hash + a 10 minute expiry, return the plain OTP
+// so it can be emailed. The caller must save the document.
+userSchema.methods.generateOtp = function () {
+  const otp = crypto.randomInt(100000, 1000000).toString();
 
-  this.resetPasswordToken = crypto
-    .createHash("sha256")
-    .update(resetToken)
-    .digest("hex");
+  this.otp = crypto.createHash("sha256").update(otp).digest("hex");
+  this.otpExpire = Date.now() + 10 * 60 * 1000; // 10 minutes
+  this.otpAttempts = 0;
 
-  this.resetPasswordExpire = Date.now() + 30 * 60 * 1000; // 30 minutes
-
-  return resetToken;
+  return otp;
 };
 
-module.exports = mongoose.model("User", userSchema);
+module.exports = mongoose.models.User || mongoose.model("User", userSchema);

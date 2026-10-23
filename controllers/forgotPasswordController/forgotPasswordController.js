@@ -1,11 +1,21 @@
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
-const User = require("../../models/AuthModel/AuthModel");
+const User = require("../../models/authModel/authModel");
 const sendEmail = require("../../utils/mailer");
 const { SECRET_KEY } = require("../../utils/config");
 
+const MAX_OTP_ATTEMPTS = 5;
+
+const hashOtp = (otp) => crypto.createHash("sha256").update(String(otp)).digest("hex");
+
+const clearOtp = (user) => {
+  user.otp = undefined;
+  user.otpExpire = undefined;
+  user.otpAttempts = 0;
+};
+
 /**
- * @desc    Request a password reset email
+ * @desc    Email a 6-digit OTP for resetting the password
  * @route   POST /api/auth/forgot-password
  * @access  Public
  */
@@ -13,38 +23,51 @@ const forgotPassword = async (req, res, next) => {
   try {
     const { email } = req.body;
 
-    const user = await User.findOne({ email: (email || "").toLowerCase() });
-    if (!user) {
-      return res.status(200).json({
-        success: true,
-        message: "If that email is registered, a reset link has been sent",
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
       });
     }
 
-    const resetToken = user.getResetPasswordToken();
+    // Same answer whether or not the email exists, so accounts can't be probed
+    const genericMessage = "If that email is registered, an OTP has been sent to it";
+
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    if (!user) {
+      return res.status(200).json({ success: true, message: genericMessage });
+    }
+
+    const otp = user.generateOtp();
     await user.save({ validateBeforeSave: false });
-
-    const resetUrl = `${process.env.CLIENT_URL || "http://localhost:5173"}/reset-password/${resetToken}`;
-
-    const message = `You requested a password reset. Click the link below to set a new password (valid for 30 minutes):\n\n${resetUrl}\n\nIf you did not request this, please ignore this email.`;
 
     try {
       await sendEmail({
         to: user.email,
-        subject: "Password Reset Request",
-        text: message,
+        subject: "Your Petora password reset OTP",
+        text: `Your Petora password reset OTP is ${otp}. It is valid for 10 minutes. If you did not request this, please ignore this email.`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 480px; margin: auto;
+                      border: 1px solid #e0e0e0; border-radius: 8px; padding: 32px;">
+            <h2 style="color: #14917f; margin-bottom: 8px;">Password reset request</h2>
+            <p style="color: #555;">Use this OTP to reset your Petora password. It is valid for <strong>10 minutes</strong>.</p>
+            <div style="text-align: center; margin: 24px 0;">
+              <span style="font-size: 36px; font-weight: bold; letter-spacing: 10px;
+                           color: #111; background: #f3f4f6; padding: 12px 24px;
+                           border-radius: 8px; display: inline-block;">${otp}</span>
+            </div>
+            <p style="color: #999; font-size: 13px;">
+              If you did not request this, please ignore this email. Your account is safe.
+            </p>
+          </div>`,
       });
 
-      res.status(200).json({
-        success: true,
-        message: "If that email is registered, a reset link has been sent",
-      });
+      return res.status(200).json({ success: true, message: genericMessage });
     } catch (emailError) {
-      // Show the real reason in the server terminal (auth failure, missing SMTP vars, etc.)
+      // Show the real reason in the server terminal (auth failure, etc.)
       console.error("Email send failed:", emailError.message);
 
-      user.resetPasswordToken = undefined;
-      user.resetPasswordExpire = undefined;
+      clearOtp(user);
       await user.save({ validateBeforeSave: false });
 
       // In development, show the real reason on the page to make setup easier
@@ -63,41 +86,67 @@ const forgotPassword = async (req, res, next) => {
 };
 
 /**
- * @desc    Reset password using token from email
- * @route   PUT /api/auth/reset-password/:resetToken
+ * @desc    Check the OTP and set a new password. Logs the user in on success.
+ * @route   PUT /api/auth/reset-password
+ * @body    { email, otp, password }
  * @access  Public
  */
 const resetPassword = async (req, res, next) => {
   try {
-    const { password } = req.body;
+    const { email, otp, password } = req.body;
 
-    if (!password) {
+    if (!email || !otp || !password) {
       return res.status(400).json({
         success: false,
-        message: "New password is required",
+        message: "Email, OTP and new password are required",
       });
     }
 
-    const hashedToken = crypto
-      .createHash("sha256")
-      .update(req.params.resetToken)
-      .digest("hex");
-
-    const user = await User.findOne({
-      resetPasswordToken: hashedToken,
-      resetPasswordExpire: { $gt: Date.now() },
-    });
-
-    if (!user) {
+    if (password.length < 6) {
       return res.status(400).json({
         success: false,
-        message: "Reset token is invalid or has expired",
+        message: "Password must be at least 6 characters",
       });
     }
 
-    user.password = password;
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpire = undefined;
+    const user = await User.findOne({ email: email.toLowerCase().trim() }).select("+otp");
+
+    if (!user || !user.otp || !user.otpExpire || user.otpExpire.getTime() < Date.now()) {
+      return res.status(400).json({
+        success: false,
+        message: "OTP is invalid or has expired. Please request a new one.",
+      });
+    }
+
+    if (user.otpAttempts >= MAX_OTP_ATTEMPTS) {
+      clearOtp(user);
+      await user.save({ validateBeforeSave: false });
+      return res.status(400).json({
+        success: false,
+        message: "Too many incorrect attempts. Please request a new OTP.",
+      });
+    }
+
+    const submitted = Buffer.from(hashOtp(String(otp).trim()), "hex");
+    const stored = Buffer.from(user.otp, "hex");
+    const isMatch = submitted.length === stored.length && crypto.timingSafeEqual(submitted, stored);
+
+    if (!isMatch) {
+      user.otpAttempts += 1;
+      await user.save({ validateBeforeSave: false });
+
+      const left = MAX_OTP_ATTEMPTS - user.otpAttempts;
+      return res.status(400).json({
+        success: false,
+        message:
+          left > 0
+            ? `Incorrect OTP. ${left} attempt(s) left.`
+            : "Too many incorrect attempts. Please request a new OTP.",
+      });
+    }
+
+    user.password = password; // hashed by the pre-save hook
+    clearOtp(user);
     await user.save();
 
     const token = jwt.sign(
