@@ -1,5 +1,5 @@
 const jwt = require("jsonwebtoken");
-const User = require("../../models/AuthModel/AuthModel");
+const User = require("../../models/authModel/authModel");
 const { SECRET_KEY } = require("../../utils/config");
 
 /**
@@ -53,6 +53,7 @@ const login = async (req, res, next) => {
         phone: user.phone,
         role: user.role,
         avatar: user.avatar,
+        isVerified: user.isVerified,
         createdAt: user.createdAt,
       },
     });
@@ -89,4 +90,30 @@ const getMe = async (req, res, next) => {
   }
 };
 
-module.exports = { login, logout, getMe };
+/**
+ * @desc    Upload / replace the profile photo
+ * @route   PUT /api/auth/profile/photo
+ * @access  Private
+ */
+const updateProfilePhoto = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "No image uploaded",
+      });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+   { avatar: `/uploads/pets/${req.file.filename}` },
+{ returnDocument: "after" }
+    );
+
+    res.status(200).json({ success: true, user });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { login, logout, getMe, updateProfilePhoto };
