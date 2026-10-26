@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const Pet = require("../../models/petModel/petModel");
 const generatePetId = require("../../utils/generatePetId");
 const generateQRCode = require("../../utils/generateQRCode");
+const { parseExtras, publicExtras } = require("../../utils/petExtras");
 const { recordScan } = require("../scanController/scanController");
 
 /**
@@ -30,6 +31,12 @@ const createPet = async (req, res, next) => {
         success: false,
         message: "Pet name and species are required",
       });
+    }
+
+    // health / safety / records (sent as one JSON field called "extras")
+    const extras = parseExtras(req.body);
+    if (extras.error) {
+      return res.status(400).json({ success: false, message: extras.error });
     }
 
     // Generate a unique petId, retrying on the rare collision
@@ -64,6 +71,7 @@ const createPet = async (req, res, next) => {
       contactPhone,
       photo: req.file ? `/uploads/pets/${req.file.filename}` : "",
       qrCodeUrl,
+      ...extras.data,
     });
 
     res.status(201).json({ success: true, pet });
@@ -126,6 +134,11 @@ const updatePet = async (req, res, next) => {
       });
     }
 
+    const extras = parseExtras(req.body);
+    if (extras.error) {
+      return res.status(400).json({ success: false, message: extras.error });
+    }
+
     const allowedFields = [
       "name",
       "species",
@@ -141,6 +154,9 @@ const updatePet = async (req, res, next) => {
         pet[field] = req.body[field];
       }
     });
+
+    // only the keys the form actually sent are changed
+    pet.set(extras.data);
 
     if (req.file) {
       pet.photo = `/uploads/pets/${req.file.filename}`;
@@ -212,6 +228,8 @@ const getPublicPetProfile = async (req, res, next) => {
         isLost: pet.isLost,
         ownerName: pet.owner?.name,
         ownerPhone: pet.owner?.phone,
+        // only the fields the owner made public (vet, microchip etc. are NOT included)
+        ...publicExtras(pet),
       },
     });
   } catch (error) {

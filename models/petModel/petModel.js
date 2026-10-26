@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { extrasFields } = require("./petExtrasModel");
 
 const petSchema = new mongoose.Schema(
   {
@@ -28,6 +29,7 @@ const petSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    // kept for pets created before date of birth existed
     age: {
       type: Number,
       min: 0,
@@ -61,6 +63,9 @@ const petSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+
+    // health, safety & records (see petExtrasModel.js)
+    ...extrasFields,
   },
   { timestamps: true }
 );
